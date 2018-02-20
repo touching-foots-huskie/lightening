@@ -1,8 +1,9 @@
 # -*- coding:utf-8 -*-
+import tqdm
 import numpy as np
 
 
-class env:
+class Env:
     def __init__(self, config):
         self.config = config
         self.plant = self.plant_wrapper(config['plant'])
@@ -27,7 +28,7 @@ class env:
     def poly_plant(self, input_data, xn):
         y1, y2, y3, x1, x = input_data
         y = (y1*y2*y3*x1*(y3 - 1.0) + x)/(1.0 + y2**2 + y3*2)
-        ni_data = (y, y1, y2, x, xn)
+        ni_data = [y, y1, y2, x, xn]
         return y, ni_data
         
     def get_list(self, X, Y):
@@ -35,30 +36,36 @@ class env:
         #  X Y should be nparray
         Xs = []
         Ys = []
+        Signals = []
         assert X.shape == Y.shape
         start_loc = max(self.x_num, self.y_num)
-        for i in range(start_loc, X.shape[0]):
+        for i in tqdm.tqdm(range(start_loc, X.shape[0] - self.config['gap_len'])):
             Xs.append(X[(i - self.x_num + 1):(i + 1)])
             Ys.append(Y[(i - self.y_num):i])
-        return Xs, Ys
+            Signals.append(X[i:(i + self.config['gap_len'])])
+        print('data generation finished!')
+        input_datas = np.concatenate((Xs, Ys), axis=-1)
+        return input_datas, Signals
 
     #  run algorithms:  
     #  pid:
     def run_algorithms(self):
         if self.config['algorithm'] == 'pid':
-            self.pid()
+            return self.pid()
         else:
             print('No such algorithm!')
 
     def pid(self):
-        t = np.linspace(0, config['t1'], (config['t1'] * config['frequency']) + 1)
+        #  config for pid:
+        Kp = 1.0
+        t = np.linspace(0, self.config['t1'], (self.config['t1'] * self.config['frequency']) + 1)
         X = np.sin(t)
         Y = []
         _error = 0
-        input_data = np.concatenate((myenv.init_y, myenv.init_x))
+        input_data = np.concatenate((self.init_y, self.init_x))
         for xn in X:
-            xn += _error * 1.0
-            y, input_data = myenv.plant(input_data, xn)
+            xn += _error * Kp
+            y, input_data = self.plant(input_data, xn)
             _error = input_data[-1] - y
             Y.append(y)
 
