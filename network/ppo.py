@@ -21,8 +21,8 @@ class PPO(object):
         self.tfs = tf.placeholder(tf.float32, [None, self.config['s_dim']], 'state')
         self.feed_dict['state'] = self.tfs
     
-        # critic:
-        # input state, output normalized value
+        #  critic:
+        #  input state, output normalized value
         with tf.variable_scope('critic'):
             self.v = self._build_cnet()
             self.tfdc_r = tf.placeholder(tf.float32, [None, 1], 'normalized_q_n')
@@ -31,7 +31,7 @@ class PPO(object):
             tf.summary.scalar('closs', self.closs)
             self.ctrain_op = tf.train.AdamOptimizer(self.config['c_lr']).minimize(self.closs)
 
-        # actor
+        #  actor
         pi, pi_params = self._build_anet('pi', trainable=True)
         oldpi, oldpi_params = self._build_anet('oldpi', trainable=False)
         with tf.variable_scope('sample_action'):
@@ -81,11 +81,11 @@ class PPO(object):
     def update(self, results):
         self.sess.run(self.update_oldpi_op)
         #  feed_dict:
-        # update actor
+        #  update actor
         feed_dict = self.get_feed_dict(results) 
         [self.sess.run(self.atrain_op, feed_dict) 
                 for _ in range(self.config['a_update_steps'])]
-        # update critic
+        #  update critic
         [self.sess.run(self.ctrain_op, feed_dict)
                 for _ in range(self.config['c_update_steps'])]
 
@@ -99,7 +99,9 @@ class PPO(object):
             l3 = tf.layers.dense(l2, dim3, tf.nn.relu, trainable=trainable)
             mu = tf.layers.dense(l3, self.config['a_dim'], tf.nn.tanh, trainable=trainable,
                                  kernel_initializer=tf.random_normal_initializer(stddev=1/dim3))
-            # log_sigma ~ N(-2,1/4), sigma has initial value of mean approximately exp(-2)
+            #  compression:
+            mu = mu * 0.1
+            #  log_sigma ~ N(-2,1/4), sigma has initial value of mean approximately exp(-2)
             log_sigma = tf.get_variable("log_sigma", shape=[self.config['a_dim']],
                                         initializer=tf.random_normal_initializer(mean=-2,
                                                                                  stddev=1/self.config['a_dim']))
@@ -109,7 +111,7 @@ class PPO(object):
         return norm_dist, params
 
     def _build_cnet(self):
-        # neural net with three hidden layers
+        #  neural net with three hidden layers
         dim1 = 10 * self.config['s_dim']
         dim3 = 10 * 1
         dim2 = int(np.sqrt(dim1 * dim3))
@@ -135,7 +137,7 @@ class PPO(object):
         self.saver.save(self.sess, self.config['save_dir'])
 
     def restore(self):
-        self.save.restore(self.sess, self.config['save_dir'] + '/latest')
+        self.saver.restore(self.sess, self.config['save_dir'])
 
     def log(self, results):
         feed_dict = self.get_feed_dict(results)

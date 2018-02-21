@@ -1,6 +1,7 @@
 # -*- coding:utf-8 -*-
 import tqdm
 import numpy as np
+import scipy.io as scio
 
 
 class Env:
@@ -11,6 +12,8 @@ class Env:
         self.init_x = np.zeros(self.x_num)
         self.init_y = np.zeros(self.y_num)
         self.input_dim = self.x_num + self.y_num
+        #  get signals:
+        self.get_signals()
     
     #  manipulations：
     def reset(self, x_data, y_data):
@@ -51,24 +54,57 @@ class Env:
     #  pid:
     def run_algorithms(self):
         if self.config['algorithm'] == 'pid':
-            return self.pid()
+            return self.pid(self.config['source_signal'])
         else:
             print('No such algorithm!')
 
-    def pid(self):
+    def pid(self, signal_type='sin'):
         #  config for pid:
         Kp = 1.0
-        t = np.linspace(0, self.config['t1'], (self.config['t1'] * self.config['frequency']) + 1)
-        X = np.sin(t)
+        
+        #  prepare for data
+        if signal_type == 'sin':
+            X = self.sin_signal
+        elif signal_type == 'cos':
+            X = self.cos_signal
+        elif signal_type == 'rgs':
+            X = self.rgs_signal
+
         Y = []
         _error = 0
         input_data = np.concatenate((self.init_y, self.init_x))
+        _input_data = input_data 
         for xn in X:
             xn += _error * Kp
             y, input_data = self.plant(input_data, xn)
             _error = input_data[-1] - y
+            print(_error)
             Y.append(y)
 
         Y = np.array(Y)
+        #  after running the pid, save the signal and start:
+        self.test_signal = X
+        self.test_input = _input_data
         return X, Y 
 
+    #  different signals:
+    def get_signals(self):
+        t = np.linspace(0, self.config['t1'], (self.config['t1'] * self.config['frequency']) + 1)
+        #  sin signals:
+        self.sin_signal = np.sin(t)
+        #  cos signals:
+        self.cos_signal = np.cos(t)-1.0
+        #  rgs signals: times 10
+        self.rgs_signal = scio.loadmat('env/signal/rgs.mat')['y'][:, 0].reshape([-1])[:1000]*10
+        
+        self.test_input = np.concatenate((self.init_y, self.init_x))
+
+    def choose_signal(self):
+        if self.config['source_signal'] == 'sin':
+            return self.sin_signal
+
+        elif self.config['source_signal'] == 'cos':
+            return self.cos_signal
+        
+        elif self.config['source_signal'] == 'rgs':
+            return self.rgs_signal

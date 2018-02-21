@@ -3,3 +3,7 @@
 *.meta
 *.json
 *.GTX
+*checkpoint
+*model.data*
+*model.index*
+*.mat
