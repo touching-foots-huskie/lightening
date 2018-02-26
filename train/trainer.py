@@ -1,10 +1,11 @@
 # -*- coding:utf-8 -*-
+import queue
 import math
 import json
 import random
 import numpy as np
 import env.env as Env
-import network.ppo as NN
+import network.dpo as NN
 from matplotlib import pyplot as plt 
 
 
@@ -12,7 +13,7 @@ class trainer:
     def __init__(self, config):
         self.config = config
         self.env = Env.Env(config)
-        self.nn = NN.PPO(config)
+        self.nn = NN.DPO(config)
         if self.config['restore']:
             self.nn.restore()
             print('model has been restored!')
@@ -20,117 +21,92 @@ class trainer:
         X = self.env.choose_signal()
         self.input_datas, self.Signals = self.env.get_list(X, X)
         self.list_num = self.input_datas.shape[0]
-
-    def run_episode(self, signal, input_data):
-        #  X is the source:
-        result = dict()
-        for i, xn in enumerate(signal[:-1]):
-            #  preprossess xn
-            state = list(input_data)
-            state.append(xn)
-            state.append(signal[i+1])
-            state = np.array(state).reshape([1, -1])
-
-            cx = self.nn.choose_action(state).reshape([1, -1])
-            xc = np.squeeze(cx) + xn
-
-            y, input_data = self.env.plant(input_data, xc)
-            #  y is assumed to be identical to xn:
-            reward = self.reward(abs(y-xn))
-            _error = abs(y-xn)
-            #  add results:
-            if i == 0:
-                result['state'] = state
-                result['old_act'] = cx
-                result['error'] = _error
-            elif i == 1:
-                result['reward'] = reward
-            #  in shortest structure we don't need more.
-            '''
-                result['state'] = np.concatenate((result['state'], state), axis=0)
-                result['old_act'] = np.concatenate((result['old_act'], cx), axis=0)
-                result['error'] = np.append(result['error'], _error)
-            else:
-                result['state'] = np.concatenate((result['state'], state), axis=0)
-                result['old_act'] = np.concatenate((result['old_act'], cx), axis=0)
+        self.results_list = queue.deque(maxlen=self.config['max_batches'])
     
-                result['reward'] = np.append(result['reward'], reward)
-                result['error'] = np.append(result['error'], _error)
-
-            '''
-        #  calculate q_val:
-        #  the reward of the final action is 0
-        result['reward'] = np.append(result['reward'], 0)
-        r_len = result['reward'].shape[0]
-        result['q_val'] = np.zeros(r_len)
-        for i, _r in enumerate(result['reward'][::-1]):
-            if i == 0:
-                result['q_val'][r_len-i-1] = _r
-            else:
-                result['q_val'][r_len-i-1] = _r + self.config['gamma']*result['q_val'][r_len-i]
-
-        #  get value and q_val:
-        result['q_val'] = result['q_val'].reshape([-1, 1])
-        result['value'] = self.nn.get_v(result['state']).reshape([-1, 1]) 
-
-        return result
-
-    def run_policy(self):
+    def batch_explore(self):
         results = dict()
-        for i in range(self.config['episodes_per_iter']):
-            #  prepare data:
+        for i in range(self.config['explore_batch']):
             num = random.randint(0, self.list_num - 1)
             input_data = self.input_datas[num]
-            signal = self.Signals[num]
-
-            #  add noise to input_data:
             input_data += np.random.randn(input_data.shape[0])*self.config['noise_level']
-
-            result = self.run_episode(signal, input_data) 
+            #  explore using iter_learn
+            bxc, berror = self.env.iter_learn(input_data)   
+            #  reshape structure
+            breward = np.array(self.reward(berror)).reshape([1, -1])
+            bxc = bxc.reshape([1, -1])
+            berror = berror.reshape([1, -1])
+            input_data = np.array(input_data).reshape([1, -1])
 
             if i == 0:
-                results = result
+                results['state'] = input_data
+                results['target_action'] = bxc
+                results['berror'] = berror
+                results['breward'] = breward
             else:
-                for key, value in result.items():
-                    results[key] = np.concatenate((results[key], value), axis=0)
+                results['state'] = np.concatenate((results['state'], input_data), axis=0)
+                results['target_action'] = np.concatenate((results['target_action'], bxc), axis=0)
+                results['berror'] = np.concatenate((results['berror'], berror), axis=0)
+                results['breward'] = np.concatenate((results['breward'], breward), axis=0)
+        self.results_list.append(results)
 
-        return results
+    def batch_train(self):
+        #  find a batch outof the results_list
+        r_list_num = len(self.results_list)
+        num = random.randint(0, r_list_num-1)
+        t_results = self.results_list[num]
+        for i in range(self.config['explore_batch']):
+            input_data = t_results['state'][i]
+            xt = input_data[-1]
+            xc = np.squeeze(self.nn.choose_action(input_data.reshape([1, -1])))
+            input_data[-1] += xc
+            y, _ = self.env.plant(input_data)
+            _error = abs(xt - y)
+            reward = self.reward(_error)
+            #  exam:
+            #  reshape
+            advantage = (t_results['breward'][i] - reward).reshape([1, -1])
+            _error = np.array(_error).reshape([1, -1])
+
+            if i == 0:
+                print('xc: {}, bxc: {}'.format(xc, t_results['target_action'][i]))
+                print('error: {}, berror: {}'.format(_error, t_results['berror'][i]))
+                print('reward: {}, breward: {}'.format(reward, t_results['breward'][i]))
+                print(advantage)
+
+            if i == 0:
+                t_results['advantage'] = advantage
+                t_results['error'] = _error
+            else:
+                t_results['advantage'] = np.concatenate((t_results['advantage'], advantage), axis=0)
+                t_results['error'] = np.concatenate((t_results['error'], _error), axis=0)
+
+        #  after update the advantage part:
+        #  train the structure:
+        self.nn.update(t_results)
+        self.nn.log(t_results)
+        print('in this iter |error:{}'.format(t_results['error'].mean()))
 
     def train(self):
-        for i in range(self.config['iter_num']):
-            #  update the environment first
-            results = self.run_policy()
-            #  normalize in results:
-            results['q_val'] = (results['q_val'] - results['q_val'].mean())/results['q_val'].std()
-            results['advantage'] = results['q_val'] - results['value']
-            results['advantage'] = (results['advantage'] - results['advantage'].mean())/results['advantage'].std()
+        #  train is to arrage batch_explore and batch_train
+        if self.config['restore']:
+            self.nn.restore()
+            print('model has been restored!')
 
-            self.nn.update(results)
-            self.nn.log(results)
-            print('iter:{}| reward:{}'.format(i, results['reward'].mean()))
-            print(results['old_act'][:10])
+        #  explore first
+        self.batch_explore()
+        for i in range(self.config['iter_num']):
+            self.batch_train()
+
         #  save after train:
         if self.config['save']:
             self.nn.save()
             print('model has been saved!')
 
     def test(self, signal_type='sin', test_len=1):
-        #  test the policy in test_len * gap_len:
-        test_len *= self.config['gap_len']
-        if signal_type == 'sin':
-            results = self.run_episode(self.env.sin_signal[:test_len], self.env.test_input)
-        elif signal_type == 'cos':
-            results = self.run_episode(self.env.cos_signal[:test_len], self.env.test_input)
-        elif signal_type == 'rgs':
-            results = self.run_episode(self.env.rgs_signal[100:100+test_len], self.env.test_input)
+        # test need to redesign 
+        pass
 
-        print('Test| reward:{}'.format(results['reward'].mean()))
-
-        print(results['error'])
-        print(results['reward'])
-        print(results['state'])
-        #  reward design:
-
+    #  reward design
     def reward(self, x):
         #  alpha, beta, x0, parameters:
         alpha = 1.0

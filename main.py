@@ -7,7 +7,8 @@ from matplotlib import pyplot as plt
 
 if __name__ == "__main__":
     config = dict()
-    # environment:
+    #  environment:
+    config['learn_iter'] = 20
     config['frequency'] = 100
     config['t1'] = 1
     config['plant'] = 'poly'
@@ -32,14 +33,16 @@ if __name__ == "__main__":
     config['save'] = True
     config['restore'] = False
     config['iter_num'] = 1000
-    config['episodes_per_iter'] = 20
+    #  exploration settings:
+    config['explore_batch'] = 20
+    config['max_batches'] = 100 
     #  config dim_dict
     config['a_dim_dict'] = {
             'poly': 1,
             }
 
     config['s_dim_dict'] = {
-            'poly': 7,
+            'poly': 5,
             }
 
     config['a_dim'] = config['a_dim_dict'][config['plant']]

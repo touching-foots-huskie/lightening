@@ -7,3 +7,5 @@
 *model.data*
 *model.index*
 *.mat
+*.c
+*train_log*

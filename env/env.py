@@ -1,4 +1,5 @@
 # -*- coding:utf-8 -*-
+import math
 import tqdm
 import numpy as np
 import scipy.io as scio
@@ -27,10 +28,20 @@ class Env:
             self.x_num = 2
             self.y_num = 3
             return self.poly_plant
+        elif plant_choice == 'triangle':
+            self.x_num = 2
+            self.y_num = 3
+            return self.sin_plant
 
-    def poly_plant(self, input_data, xn):
+    def poly_plant(self, input_data, xn=0):
         y1, y2, y3, x1, x = input_data
         y = (y1*y2*y3*x1*(y3 - 1.0) + x)/(1.0 + y2**2 + y3*2)
+        ni_data = [y, y1, y2, x, xn]
+        return y, ni_data
+
+    def sin_plant(self, input_data, xn=0):
+        y1, y2, y3, x1, x = input_data
+        y = math.sin(y1) + math.cos(y2) + math.sin(y3) + x1 + x 
         ni_data = [y, y1, y2, x, xn]
         return y, ni_data
         
@@ -86,6 +97,28 @@ class Env:
         self.test_signal = X
         self.test_input = _input_data
         return X, Y 
+
+    def iter_learn(self,input_data):
+        #  one step target iter_learning:
+        #  iter_learn may not converge, we need to sort it.
+        xc = 0
+        xt = input_data[-1]
+        data_lists = []
+        for i in range(self.config['learn_iter']):
+            I_input_data = input_data
+            #  add compensation:
+            I_input_data[-1] += xc
+            y, _ = self.plant(I_input_data)
+            #  update compensation:
+            _error = abs(xt - y)
+            xc += _error * 0.1
+            #  add xc, _error into batch
+            data_lists.append([xc, _error])
+        data_lists = np.array(data_lists)
+        print(data_lists)
+        data_lists = data_lists[np.argsort(data_lists[:, 1])]
+        bxc, berror = data_lists[0]
+        return bxc, berror
 
     #  different signals:
     def get_signals(self):
