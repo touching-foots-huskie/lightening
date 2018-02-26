@@ -1,5 +1,7 @@
 #  : Harvey Chang
 #  : chnme40cs@gmail.com
+import random
+import numpy as np
 import tensorflow as tf
 import data.dataset as D
 import network.network as NN
@@ -83,7 +85,7 @@ class Trainer:
         #  begin training process:
         step = 0
         while step < self.config['training_epochs']:
-            for i in range(int((1.0 * self.data_num) / self.batch_size)):
+            for i in range(self.config['sample_num']//self.batch_size):
                 datax = self.train_dataX[i * self.batch_size:(i + 1) * self.batch_size]
                 datay = self.train_dataY[i * self.batch_size:(i + 1) * self.batch_size]
 
@@ -104,9 +106,10 @@ class Trainer:
         if self.config['save']:
             self.nn.save()
 
-    def exam_result(self):
+    def test(self):
         #  begin training process:
         val_loss, pred = self.nn.validate(self.val_data)
+        print('Val_loss is {}'.format(val_loss))
         self.plot_val(pred)
         
     #  drawing examination

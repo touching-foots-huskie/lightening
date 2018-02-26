@@ -21,12 +21,17 @@ def read_mat(data_num, filename):
     return choose_data
 
 
-def read_data(file_path, tail_name, data_num):
+def read_data(file_path, tail_name, data_num, val_data_num, test_mode=False):
     #  return trainXY, valXY
-    dataX = read_mat(data_num, '{}/train_{}'.format(file_path, tail_name))
-    dataY = read_mat(data_num, '{}/out_train_{}'.format(file_path, tail_name))
-    val_dataX = read_mat(data_num, '{}/val_{}'.format(file_path, tail_name))
-    val_dataY = read_mat(data_num, '{}/out_val_{}'.format(file_path, tail_name))
+    if not test_mode:
+        dataX = read_mat(data_num, '{}/train_{}'.format(file_path, tail_name))
+        dataY = read_mat(data_num, '{}/out_train_{}'.format(file_path, tail_name))
+    else:
+        dataX = 0
+        dataY = 0
+
+    val_dataX = read_mat(val_data_num, '{}/val_{}'.format(file_path, tail_name))
+    val_dataY = read_mat(val_data_num, '{}/out_val_{}'.format(file_path, tail_name))
     return dataX, dataY, val_dataX, val_dataY
 
 
@@ -41,7 +46,7 @@ def r_sequence(X, Y, look_up):
     return datax, datay
 
 
-def p_sequence(X, Y, m=2, n=3, max_l=3, axis=0):
+def p_sequence(X, Y, m, n, max_l, axis):
     #  used in pre_version
     #  m is the lookup in x
     #  n is the lookup in y
