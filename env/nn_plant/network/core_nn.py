@@ -6,12 +6,12 @@ import numpy as np
 
 
 def nn_wrapper(No):
-    return {1:nn1, 2:nn2, 3:nn3, 4:nn4}[No]
+    return {1:nn1, 2:nn2, 3:nn3, 4:nn4, 5:nn5}[No]
 
 
 def nn1(layer):
     hidden_dim = [32, 64, 64, 32]
-
+    #  add bn:
     for dim in hidden_dim:
         layer = tf.layers.dense(layer, dim,
                                 activation=tf.nn.relu,
@@ -58,6 +58,20 @@ def nn4(layer):
         
         layer = res_block(layer, res_core)
     output = tf.layers.dense(layer, 1, kernel_initializer=tf.contrib.keras.initializers.glorot_uniform())
+    return output
+
+
+def nn5(layer, classes=81):
+    #  classification structure:
+    #  with 81 classes
+    hidden_dim = [32, 64, 64, 32]
+
+    for dim in hidden_dim:
+        layer = tf.layers.dense(layer, dim,
+                                activation=tf.nn.relu,
+                                kernel_initializer=tf.contrib.keras.initializers.glorot_uniform())
+    output = tf.layers.dense(layer, classes, kernel_initializer=tf.contrib.keras.initializers.glorot_uniform())
+
     return output
 
 

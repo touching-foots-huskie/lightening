@@ -1,5 +1,5 @@
-#  : Harvey Chang
-#  : chnme40cs@gmail.com
+#: Harvey Chang
+#: chnme40cs@gmail.com
 import random
 import numpy as np
 import tensorflow as tf
@@ -20,72 +20,61 @@ class Trainer:
         self.nn = NN.Pdn(config) 
 
         if self.config['restore']:
-            self.nn.restore()
+            for name in self.config['restore_parts']:
+                self.nn.restore(name)
 
         self.batch_size = config['batch_size']
         #  m, n are the major structure
         self.m = config['m']
         self.n = config['n']
-        #  mp, np are the appended structure
-        self.mp = config['mp']
-        self.np = config['np']
 
-        self.max_l = max(self.m-1, self.n, self.mp-1, self.np)
-        if ((self.m-1) == self.max_l) or ((self.mp-1) == self.max_l):
-            self.axis = 0
-        elif (self.n == self.max_l) or (self.np == self.max_l):
-            self.axis = 1
+        self.max_l = max(self.m-1, self.n)
     
-    def add_data(self, X, Y, data_type='train'):
+    def add_data(self, X, Y, V, data_type='train'):
         #  generating training data
         #  X shape(N, time_step)
         #  Y shape(N, time_step)
         dataX, dataY = [], []
-        dataXp = []
+        #  sequence them
         for i in range(X.shape[0]):
             if self.config['typ'] == 'pre':
-                if self.config['reverse'] == 'none':
-                    datax, datay = D.p_sequence(X[i], Y[i], self.m, self.n, self.max_l, self.axis)
-                elif (self.config['reverse'] == 'left') or (self.config['reverse'] == 'right'):
-                    datax, datay = D.p_sequence(Y[i], X[i], self.m, self.n, self.max_l, self.axis)
+                datax, datay = D.p_sequence(X[i], Y[i], V[i], self.m, self.n, self.max_l)
 
             elif self.config['typ'] == 'rnn':
-                datax, datay = D.r_sequence(X[i], Y[i], self.m)
+                datax, datay = D.r_sequence(X[i], Y[i], V[i], self.m)
 
             dataX.append(datax)
+            #  change y:
             dataY.append(datay)
 
-            if self.config['append']:
-                if self.config['reverse'] == 'none':
-                    dataxp, _ = D.p_sequence(X[i], Y[i], self.mp, self.np, self.max_l, self.axis)
-                elif (self.config['reverse'] == 'left') or (self.config['reverse'] == 'right'):
-                    dataxp, _ = D.p_sequence(Y[i], X[i], self.mp, self.np, self.max_l, self.axis)
-                dataXp.append(dataxp)
-
+        #  split Y:
+        dataY = np.asarray(dataY)  #  batch, time_step
+        dataYb, dataYn = D.split(dataY)
+        dataYn = dataYn[:, :, np.newaxis]
+        '''
+        dataYn = np.clip(dataYn, -round(self.config['classes']/2.0), round(self.config['classes']/2.0))
+        dataYn += round(self.config['classes']/2.0)
+        '''
+        dataX = np.asarray(dataX)[:, 2:]
         if data_type == 'train':
-            self.train_dataX = np.asarray(dataX)
-            self.train_dataY = np.asarray(dataY)[:, :, np.newaxis]
+            self.train_dataX = dataX
+            self.train_dataY = dataYn
             self.train_original_x = np.array(X[:, self.m:])
             #  log the shape when adding trainX:
-            if self.config['append']:
-                self.train_dataXp = np.asarray(dataXp)
 
         if data_type == 'validation':
             self.val_data = dict()
-            self.val_dataX = np.asarray(dataX)
-            self.val_dataY = np.asarray(dataY)[:, :, np.newaxis]
+            self.val_dataX = dataX
+            self.val_dataY = dataYn
             self.val_original_x = np.array(X[:, self.m:])
             self.val_data['X'] = self.val_dataX
             self.val_data['Y'] = self.val_dataY
-            if self.config['append']:
-                self.val_dataXp = np.asarray(dataXp)
-                self.val_data['Xp'] = self.val_dataXp
 
     def train(self):
         #  begin training process:
         step = 0
         while step < self.config['training_epochs']:
-            for i in range(self.config['sample_num']//self.batch_size):
+            for i in range(self.config['sample_num']//self.batch_size-1):
                 datax = self.train_dataX[i * self.batch_size:(i + 1) * self.batch_size]
                 datay = self.train_dataY[i * self.batch_size:(i + 1) * self.batch_size]
 
@@ -93,14 +82,12 @@ class Trainer:
                 data['X'] = datax
                 data['Y'] = datay
                 if self.config['append']:
-                    dataxp = self.train_dataXp[i * self.batch_size:(i + 1) * self.batch_size]
-                    data['Xp'] = dataxp
-
-                _, r_loss, pred = self.nn.update(data) 
+                    data['Xp'] = datax
+                _, t_accuracy, pred = self.nn.update(data) 
 
             #  validation:
-            val_loss, pred = self.nn.validate(self.val_data)
-            print('training is {}|validation: {}| step: {}'.format(r_loss, val_loss, step))
+            val_accuracy, pred = self.nn.validate(self.val_data)
+            print('training is {}|validation: {}|step: {}'.format(t_accuracy, val_accuracy, step))
             step += 1
 
         if self.config['save']:
@@ -108,9 +95,11 @@ class Trainer:
 
     def test(self):
         #  begin training process:
-        val_loss, pred = self.nn.validate(self.val_data)
-        print('Val_loss is {}'.format(val_loss))
-        self.plot_val(pred)
+        val_accuracy, pred = self.nn.validate(self.val_data)
+        print('val loss is {}'.format(val_accuracy))
+        plt.plot(pred[0, 100:200])
+        plt.plot(self.val_data['Y'][0, 100:200])
+        plt.show()
         
     #  drawing examination
     def distribution_draw(self, pred):
@@ -126,11 +115,19 @@ class Trainer:
 
     def plot_val(self, pred):
         exam_num = random.randint(0, self.batch_size-1)
-        plt.plot(np.squeeze(self.val_dataY[exam_num]), label='Actual Y')
-        plt.plot(np.squeeze(pred[exam_num]), label='Predict Y')
-        plt.plot(pred[exam_num] - self.val_dataY[exam_num], label='error')
-        plt.legend(loc='upper right')
-        plt.show()
+        #  plt.plot(np.squeeze(pred[exam_num]), label='Predict Y')
+        for i in range(self.batch_size):
+            plt.hist(np.squeeze(self.val_dataY[i]), label='Actual Y')
+        #  plt.plot(pred[exam_num] - self.val_dataY[exam_num], label='error')
+            plt.legend(loc='upper right')
+            plt.show()
+
+    def basic_error(self, Y):
+        #  Y should be (N, N, 1)
+        #  basic error is the error by basic moving:
+        loss = np.sum((Y[:, 2:] - (2*Y[:, 1:-1] - Y[:, :-2]))**2)
+        print('basic error is {}'.format(loss))
+
 
 def main():
     pass

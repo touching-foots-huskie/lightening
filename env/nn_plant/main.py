@@ -7,20 +7,22 @@ import tensorflow as tf
 import data.dataset as D
 import network.network as nn
 import train.trainer as trainer
+import network.nn_plant as nplant
+from matplotlib import pyplot as plt
 
 
 def main():
     config = dict()
     #  params for signals:
-    config['signal'] = 'sin'  
-    config['file_path'] = 'signal_data/realData' 
-    config['sample_num'] = 100
-    config['time_step'] = 9996
+    config['file_path'] = 'data/data' 
+    config['sample_num'] = 600
+    config['time_step'] = 9994
+    config['classes'] = 81
     config['batch_size'] = min(20, int(0.2*config['sample_num']))
 
     #  dimensions:
-    config['m'] = 4  #  previous m x # in reverse version we reverse the m and n
-    config['n'] = 4  #  previous n y
+    config['m'] = 2  #  previous m x # in reverse version we reverse the m and n
+    config['n'] = 3  #  previous n y
     config['channel'] = config['m'] + config['n'] 
 
     #  params for net structure:
@@ -28,37 +30,44 @@ def main():
     config['core_nn'] = 1  #  choose inside
     config['target'] = 'action'  #  or classification
 
-    #  reverse version:
-    config['reverse'] = 'none'  #  left right none
-
     #  append structure
     config['append'] = False
     config['app_func'] = 2  #  choose app structure
-    config['mp'] = 4  #  appended mp x
-    config['np'] = 4  #  appended np y
-    config['p_channel'] = config['mp'] + config['np']
 
     #  params for training:
-    config['test_mode'] = True
+    config['test_mode'] = False
 
     config['save'] = True
     config['restore'] = True
+    config['restore_parts'] = ['base']
+    config['update_part'] = 'base'  #  base, append, all 
     config['first_rnn'] = True
-    config['training_epochs'] = 100
-    config['learning_rate'] = 0.1
+    config['training_epochs'] = 1000
+    config['learning_rate'] = 1e-1
 
     #  log structure:
-    config['pre_log_dir'] = 'train_log/pre_model'
-    config['log_dir'] = 'train_log/{}_model'.format(config['typ'])
+    config['pre_log_dir'] = {'base': 'train_log/base/pre_model',
+                             'append': 'train_log/append/pre_model'}
 
-    dataX, dataY, val_dataX, val_dataY = D.read_data(config['file_path'], config['signal'], config['sample_num'], config['batch_size'], config['test_mode'])
+    config['log_dir'] = {'base': 'train_log/base/{}_model'.format(config['typ']),
+                        'append': 'train_log/append/{}_model'.format(config['typ'])}
+
+    dataX, dataY, dataV, val_dataX, val_dataY, val_dataV = D.read_data(config['file_path'], config['sample_num'], config['batch_size'])
+
+    myplant = nplant.Nplant(config)
+    myplant.restore()
+    for i in range(5):
+        myplant.test(dataX[i], dataY[i], 1000)
+    
+    '''
     mytrainer = trainer.Trainer(config)
     #  add data:
     if not config['test_mode']:
-        mytrainer.add_data(dataX, dataY)
-    mytrainer.add_data(val_dataX, val_dataY, data_type='validation')
+        mytrainer.add_data(dataX, dataY, dataV)
+    mytrainer.add_data(val_dataX, val_dataY, val_dataV, data_type='validation')
+    #  mytrainer.train()
     mytrainer.test()
-
+    '''
 
 if __name__ == '__main__':
     main()
