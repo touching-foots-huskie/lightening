@@ -5,21 +5,24 @@ import random
 import numpy as np
 import tensorflow as tf
 import data.dataset as D
-import network.network as NN
+import network.keras_rnn as NN
+from tpot import TPOTRegressor 
 from matplotlib import pyplot as plt
 
 
 class Trainer:
     def __init__(self, config):
         self.config = config
-        self.nn = NN.Pdn(config) 
+        '''
+        self.nn = NN.keras_model(config) 
 
         if self.config['restore']:
             self.nn.restore()
 
+        '''
         self.m = config['m']
         self.batch_size = config['batch_size']
-    
+
     def add_data(self, X, Y, data_type='train'):
         #  generating training data
         #  X shape(N, time_step, dimension)
@@ -35,8 +38,17 @@ class Trainer:
                 init_states.append(init_state)
 
             #  assert datax.shape(2) = config['time_step']+1
-            assert datax.shape[0] >= (self.config['time_step']+1)
+            assert datax.shape[0] >= (self.config['time_step']+3)
+            
+            #  differential structutre:|x, v, a
+            datavm = datax[1:] - datax[:-1] 
+            dataa = datavm[1:] - datavm[:-1] 
+            datav = datax[2:] - datax[:-2]
+            #
             datax = datax[1:self.config['time_step']+1]
+            datav = datav[:self.config['time_step']]*50
+            dataa = dataa[:self.config['time_step']]*5000
+            datax = np.concatenate([datax, datav, dataa], axis=-1)
 
             #  differential structure:
             if not self.config['diff']:
@@ -79,50 +91,22 @@ class Trainer:
             self.val_data['init'] = self.val_init_states
 
     def train(self):
-        step = 0
-        while step < self.config['training_epochs']:
-            for i in range(self.config['sample_num']//self.batch_size-1):
-                #  construct data
-                datax = self.train_dataX[i * self.batch_size:(i + 1) * self.batch_size]
-                datay = self.train_dataY[i * self.batch_size:(i + 1) * self.batch_size]
-
-                data = dict()
-                #  add nexaxis when shape is not equal
-
-                data['X'] = datax + np.random.normal(size=datax.shape)*self.config['noise_level']*datax.max()
-                data['Y'] = datay + np.random.normal(size=datay.shape)*self.config['noise_level']*datay.max()
-                #  add noise:
-
-                #  rnn need init_state:
-                if self.config['typ'] == 'rnn':
-                    init_state = self.train_init_states[i * self.batch_size:(i + 1) * self.batch_size]
-
-                    data['init'] = init_state 
-
-                _, t_accuracy, pred = self.nn.update(data) 
-
-            #  validation:
-            val_accuracy, pred = self.nn.validate(self.val_data)
-            #  log the last data
-            self.nn.log(data)
-            print('training is {}|validation: {}|step: {}'.format(t_accuracy, val_accuracy, step))
-            step += 1
-
+        self.nn.train(self.train_dataX, self.train_dataY)
         if self.config['save']:
             self.nn.save()
 
     def test(self):
-        #  begin training process:
-        val_accuracy, pred = self.nn.validate(self.val_data)
-        print('val loss is {}'.format(val_accuracy))
-        print('basic error is {}'.format(self.basic_error(self.val_data['Y'])))
-        plt.plot(pred[0], label= 'Pred')
-        plt.plot(self.val_data['X'][0], label='ActualX')
-        plt.plot(self.val_data['Y'][0], label='ActualY')
-        plt.legend()
-        plt.show()
-        
-    #  drawing examination
+        #  drawing examination
+        self.nn.validate(self.val_dataX, self.val_dataY)
+
+    def auto_learn(self):
+        #  auto learning best feature:
+        self.pipline_optimizer = TPOTRegressor(generations=5, population_size=20, cv=5, random_state=42, verbosity=2)
+        self.pipline_optimizer.fit(self.train_dataX, self.train_dataY)
+        print(self.pipline_optimizer.score(self.val_dataX, self.val_dataY))
+        self.pipline_optimizer.export('tpot_exported_pipeline.py')
+
+
     def distribution_draw(self, pred):
         # draw distribution:
         plt.subplot(211)

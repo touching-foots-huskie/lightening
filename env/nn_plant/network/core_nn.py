@@ -14,7 +14,7 @@ def nn1(layer):
     #  add bn:
     for dim in hidden_dim:
         layer = tf.layers.dense(layer, dim,
-                                activation=tf.nn.relu,
+                                activation=tf.nn.selu,
                                 kernel_initializer=tf.contrib.keras.initializers.glorot_uniform())
     output = tf.layers.dense(layer, 1, kernel_initializer=tf.contrib.keras.initializers.glorot_uniform())
 

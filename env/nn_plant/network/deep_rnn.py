@@ -20,10 +20,12 @@ class Deep_rnn(tf.nn.rnn_cell.RNNCell):
         return self._num_units
 
     def call(self, input, state):
-        # input and state are in same shape
-        # the initial state is (10,1)
+        #  input and state are in same shape
+        #  state are the ys.
         _input = tf.concat([input, state], axis=-1)
-        output = self._core_nn(_input)
-        new_state = state[:, 1:]  # throw the old ones
-        new_state = tf.concat([new_state, output], axis=-1)  # add the new ones
-        return output, new_state
+        _error = self._core_nn(_input)
+        previous_y = state[:, 1:]  # throw the old ones
+        next_y = state[:, -1:] + _error
+
+        new_state = tf.concat([previous_y, next_y], axis=-1)  # add the new ones
+        return next_y, new_state
