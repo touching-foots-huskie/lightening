@@ -3,6 +3,7 @@
 import pdb
 import random
 import numpy as np
+import scipy.io as scio
 import tensorflow as tf
 import data.dataset as D
 import network.keras_rnn as NN
@@ -13,13 +14,11 @@ from matplotlib import pyplot as plt
 class Trainer:
     def __init__(self, config):
         self.config = config
-        '''
         self.nn = NN.keras_model(config) 
 
         if self.config['restore']:
             self.nn.restore()
 
-        '''
         self.m = config['m']
         self.batch_size = config['batch_size']
 
@@ -30,54 +29,24 @@ class Trainer:
         dataX, dataY, init_states = [], [], []
         #  sequence them
         for i in range(X.shape[0]):
-            if self.config['typ'] == 'pre':
-                datax, datay = D.p_sequence(X[i], Y[i], self.m)
-
-            elif self.config['typ'] == 'rnn':
-                datax, datay, init_state = D.r_sequence(X[i], Y[i], self.m)
-                init_states.append(init_state)
-
-            #  assert datax.shape(2) = config['time_step']+1
-            assert datax.shape[0] >= (self.config['time_step']+3)
-            
-            #  differential structutre:|x, v, a
-            datavm = datax[1:] - datax[:-1] 
-            dataa = datavm[1:] - datavm[:-1] 
-            datav = datax[2:] - datax[:-2]
-            #
-            datax = datax[1:self.config['time_step']+1]
-            datav = datav[:self.config['time_step']]*50
-            dataa = dataa[:self.config['time_step']]*5000
-            datax = np.concatenate([datax, datav, dataa], axis=-1)
-
-            #  differential structure:
-            if not self.config['diff']:
-                datay = datay[1:self.config['time_step']+1]
-            else:
-                datay = datay[1:self.config['time_step']+1] - datay[:self.config['time_step']]
-
+            datax, datay = D.r_sequence(X[i], Y[i], self.config)
             dataX.append(datax)
-            #  change y:
             dataY.append(datay)
+
         #  cast:
         dataX = np.asarray(dataX)
         dataY = np.asarray(dataY)
-        print('max in dataX:{}'.format(dataX.max()))
-        print('max in dataY:{}'.format(dataY.max()))
-        init_states = np.asarray(init_states)
 
         if len(dataY.shape) == 2:
             dataY = dataY[:, :, np.newaxis]
-        #  shape config:
-
-        #  rnn and fc is different:
-        #  fc need to be shuffled and rnn need to keep in sequence
 
         if data_type == 'train':
             self.train_dataX = dataX
             self.train_dataY = dataY
             self.train_init_states = init_states
             self.train_original_x = np.array(X[:, self.m:])
+            np.save('data/fast_data/trainX.npy', dataX)
+            np.save('data/fast_data/trainY.npy', dataY)
             #  log the shape when adding trainX:
 
         if data_type == 'validation':
@@ -89,6 +58,8 @@ class Trainer:
             self.val_data['X'] = self.val_dataX
             self.val_data['Y'] = self.val_dataY
             self.val_data['init'] = self.val_init_states
+            np.save('data/fast_data/valX.npy', dataX)
+            np.save('data/fast_data/valY.npy', dataY)
 
     def train(self):
         self.nn.train(self.train_dataX, self.train_dataY)
@@ -99,13 +70,39 @@ class Trainer:
         #  drawing examination
         self.nn.validate(self.val_dataX, self.val_dataY)
 
+    def implement(self, iter_time=1):
+        #  imdataX is the data come from target structure:
+        #  imdatax should be (N, time_step, 9)
+        im_dataX = scio.loadmat('data/im_data.mat')['x']*self.config['x_scale']  #  experiemental scaled
+        im_dataX = im_dataX.T
+        for i in range(iter_time):
+            d_im_dataX = D.diff_generate(im_dataX, self.config)
+            predict_Y = self.nn.implement(d_im_dataX)
+            #  shape structure
+            predict_Y = np.squeeze(predict_Y)
+            #  padd:
+            predict_Y = np.concatenate([np.zeros([2+self.config['m'],]), predict_Y, np.zeros([2,])])
+            #  scale:
+            predict_Y = predict_Y/self.config['y_scale']
+            #  add compensation:| repeat this process
+            im_dataX += predict_Y
+        #  reshape into standard shape
+        predict_Y = predict_Y.T
+
+        scio.savemat('data/pre_data.mat', {'yp':predict_Y})
+        return predict_Y
+
     def auto_learn(self):
         #  auto learning best feature:
         self.pipline_optimizer = TPOTRegressor(generations=5, population_size=20, cv=5, random_state=42, verbosity=2)
-        self.pipline_optimizer.fit(self.train_dataX, self.train_dataY)
-        print(self.pipline_optimizer.score(self.val_dataX, self.val_dataY))
+        #  process data:
+        dataX = self.train_dataX.reshape([-1, 3*self.config['m']])
+        dataY = self.train_dataY.reshape([-1])
+        val_dataX = self.val_dataX.reshape([-1, 3*self.config['m']])
+        val_dataY = self.val_dataY.reshape([-1])
+        self.pipline_optimizer.fit(dataX, dataY)
+        print(self.pipline_optimizer.score(val_dataX, val_dataY))
         self.pipline_optimizer.export('tpot_exported_pipeline.py')
-
 
     def distribution_draw(self, pred):
         # draw distribution:

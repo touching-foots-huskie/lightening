@@ -8,6 +8,8 @@ from keras.layers import Dense
 from keras.layers import Activation
 from keras.layers import CuDNNLSTM
 from keras.layers import CuDNNGRU
+from keras.optimizers import Adam
+from keras.initializers import Orthogonal
 
 
 class keras_model:
@@ -15,16 +17,21 @@ class keras_model:
         #  configuration:
         self.config = config
         #  define model
+        #  gru structure
         self.model = Sequential()
-        self.model.add(CuDNNGRU(32, input_shape=(self.config['time_step'], 3*self.config['m'],), return_sequences=True))
-        self.model.add(CuDNNGRU(64, return_sequences=True))
-        self.model.add(CuDNNGRU(64, return_sequences=True))
-        self.model.add(CuDNNGRU(64, return_sequences=True))
-        self.model.add(CuDNNGRU(32, return_sequences=True))
-        self.model.add(CuDNNGRU(1, return_sequences=True))
+        init = Orthogonal()
 
+        self.model.add(CuDNNGRU(32, input_shape=(None, 3*self.config['m'],), return_sequences=True, \
+        kernel_initializer=init))
+        self.model.add(CuDNNGRU(64, return_sequences=True, kernel_initializer=init))
+        self.model.add(CuDNNGRU(64, return_sequences=True, kernel_initializer=init))
+        self.model.add(CuDNNGRU(64, return_sequences=True, kernel_initializer=init))
+        self.model.add(CuDNNGRU(32, return_sequences=True, kernel_initializer=init))
+        self.model.add(CuDNNGRU(1, return_sequences=True, kernel_initializer=init))
+        
+        adam = Adam(lr=config['learning_rate'])
         #  define learning structure
-        self.model.compile(loss='mse', optimizer='adagrad', metrics=['mae'])
+        self.model.compile(loss='mse', optimizer=adam, metrics=['mae'])
 
 
     def train(self, dataX, dataY):
@@ -37,11 +44,20 @@ class keras_model:
         self.model.load_weights('train_log/model.h5')
 
     def validate(self, val_dataX, val_dataY):
+        print('Start validate!')
+        print(val_dataX.shape)
         predict_Y = self.model.predict(val_dataX)
-        plt.plot(predict_Y[0], label='prediction')
-        plt.plot(val_dataY[0], label='actual')
+        #  plt.plot(val_dataX[-1, :, 0], label='V')
+        #  plt.plot(val_dataX[-1, :, 3], label='A')
+        #  plt.plot(val_dataX[-1, :, 6], label='J')
+        plt.plot(predict_Y[-1], label='prediction')
+        plt.plot(val_dataY[-1], label='actual')
         plt.legend()
         plt.show()
+
+    def implement(self, im_dataX):
+        predict_Y = self.model.predict(im_dataX)
+        return predict_Y
 
 
 if __name__ == '__main__':

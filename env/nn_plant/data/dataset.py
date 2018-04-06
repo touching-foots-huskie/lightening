@@ -29,33 +29,49 @@ def read_mat(data_num, filename):
     return choose_data
 
 
-def read_data(file_path, data_num=100, val_num=20):
+def read_data(file_path, data_num, config):
+
     dataX = read_mat(data_num, '{}/x.mat'.format(file_path))
     dataY = read_mat(data_num, '{}/y.mat'.format(file_path))
     print('data shape is {}'.format(dataX.shape))
     #  rescale into [-1, 1]
-    dataX = dataX/np.absolute(dataX).max()
-    dataY = dataY/np.absolute(dataY).max()
+    dataX = dataX*config['x_scale']  #  experimentally result
+    dataY = dataY*config['y_scale']
     #  get shuffled 
     dataX, dataY = shuffle(dataX, dataY)
     #  get training and get validation set:
-
-    return dataX[val_num:], dataY[val_num:],\
-            dataX[:val_num], dataY[:val_num]
+    return dataX, dataY
 
 
-def r_sequence(X, Y, look_up):
+def r_sequence(X, Y, config):
     #  used in rnn version:
+    #  read and differential
     datax, datay = [], []
-    for j in range(1, Y.shape[0] - look_up):
-        datax.append(X[j:j+look_up])
-        datay.append(Y[j+look_up-1])
+    for j in range(0, Y.shape[0]-config['m']):
+        datax.append(X[j:j+config['m']])
+        datay.append(Y[j+config['m']-1])
 
     datax = np.asarray(datax, dtype=np.float32)
     datay = np.asarray(datay, dtype=np.float32)
     #  specific structure defined later
-    init_state = Y[1:look_up+1]
-    return datax, datay, init_state
+    #  differential structure
+    datavm = datax[1:] - datax[:-1] 
+    dataa = (datavm[1:] - datavm[:-1]) 
+    datav = (datax[2:] - datax[:-2])
+    dataj = dataa[2:] - dataa[:-2]
+    #  clip:
+    dataa = dataa[1:-1]
+    datav = datav[1:-1]
+    # 
+    datav = datav*config['v_scale']
+    dataa = dataa*config['a_scale']
+    dataj = dataj*config['j_scale']
+    
+    # shape of new datax in 4 shorter [2:-2]
+    datax = np.concatenate([datav, dataa, dataj], axis=-1)
+    datay = datay[2:-2].reshape([-1, 1])
+
+    return datax, datay
 
 
 def p_sequence(X, Y, look_up):
@@ -73,6 +89,45 @@ def p_sequence(X, Y, look_up):
     datax = np.squeeze(datax)
     datay = np.squeeze(datay)
     return datax, datay
+
+
+def s_sequence(X, look_up):
+    #  generating x cascade structure
+    datax = []
+    for j in range(X.shape[0] - look_up):
+        datax.append(X[j:j+look_up])
+
+    datax = np.asarray(datax, dtype=np.float32)
+    #  specific structure defined later
+    return datax
+
+
+def diff_generate(X, config):
+    #  get differ structure X
+    dataX = []
+    for i in range(X.shape[0]):
+        datax = s_sequence(X[i], config['m'])
+
+        #  differential structutre:|x, v, a
+        datavm = datax[1:] - datax[:-1] 
+        dataa = (datavm[1:] - datavm[:-1]) 
+        datav = (datax[2:] - datax[:-2])
+        dataj = dataa[2:] - dataa[:-2]
+        #  clip:
+        dataa = dataa[1:-1]
+        datav = datav[1:-1]
+        # 
+        datav = datav*config['v_scale']
+        dataa = dataa*config['a_scale']
+        dataj = dataj*config['j_scale']
+        
+        # shape of new datax in 4 shorter [2:-2]
+        datax = np.concatenate([datav, dataa, dataj], axis=-1)
+
+        dataX.append(datax)
+    #  cast:
+    dataX = np.asarray(dataX)
+    return dataX
 
 
 if __name__ == "__main__":

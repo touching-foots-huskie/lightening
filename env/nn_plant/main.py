@@ -13,11 +13,18 @@ from matplotlib import pyplot as plt
 
 def main():
     config = dict()
+    #  scales:
+    config['x_scale'] = 10;    #  x should multiply x_scale
+    config['y_scale'] = 5e4;
+    config['v_scale'] = 50;
+    config['a_scale'] = 5000;
+    config['j_scale'] = 1e5;
     #  params for signals:
     config['file_path'] = 'data/data' 
-    config['sample_num'] = 100
-    config['time_step'] = 800  # 8995
-    config['batch_size'] = min(20, int(0.2*config['sample_num']))
+    config['sample_num'] = 1218
+    config['val_num'] = 23
+    config['time_step'] = 990  # in mat is 1000, we choose an integer
+    config['batch_size'] = 128
     config['noise_level'] = 0
 
     #  dimensions:
@@ -31,13 +38,11 @@ def main():
 
     #  params for training:
     config['diff'] = False  # start diff structure
-    config['test_mode'] = False
 
     config['save'] = True
-    config['restore'] = True
-    config['first_rnn'] = True
-    config['training_epochs'] = 1000
-    config['learning_rate'] = 1e-2
+    config['restore'] = False
+    config['training_epochs'] = 150
+    config['learning_rate'] = 1e-3
 
     #  log structure:
     config['pre_log_dir'] = {'base': 'train_log/base/pre_model'}
@@ -47,7 +52,8 @@ def main():
     config['board_dir'] = 'train_log/log'
 
     #  read datas:
-    dataX, dataY, val_dataX, val_dataY = D.read_data(config['file_path'], config['sample_num'], config['batch_size'])
+    dataX, dataY = D.read_data(config['file_path'], config['sample_num'], config)
+    val_dataX, val_dataY = D.read_data('data/test', config['val_num'], config)
 
     #  plant structure
     '''
@@ -60,12 +66,13 @@ def main():
     '''
     mytrainer = trainer.Trainer(config)
     #  add data:
-    if not config['test_mode']:
-        mytrainer.add_data(dataX, dataY)
+    mytrainer.add_data(dataX, dataY)
     mytrainer.add_data(val_dataX, val_dataY, data_type='validation')
-    #  mytrainer.train()
+    #  mytrainer.add_data(dataX, dataY, data_type='validation')
+    mytrainer.train()
     #  mytrainer.test()
-    mytrainer.auto_learn()
+    #  mytrainer.auto_learn()
+    #  mytrainer.implement()
 
 
 if __name__ == '__main__':

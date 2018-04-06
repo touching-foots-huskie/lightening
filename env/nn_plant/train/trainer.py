@@ -67,6 +67,8 @@ class Trainer:
             self.train_init_states = init_states
             self.train_original_x = np.array(X[:, self.m:])
             #  log the shape when adding trainX:
+            np.save('data/fast_data/trainX.npy', dataX)
+            np.save('data/fast_data/trainY.npy', dataY)
 
         if data_type == 'validation':
             self.val_data = dict()
@@ -77,6 +79,8 @@ class Trainer:
             self.val_data['X'] = self.val_dataX
             self.val_data['Y'] = self.val_dataY
             self.val_data['init'] = self.val_init_states
+            np.save('data/fast_data/valX.npy', dataX)
+            np.save('data/fast_data/valY.npy', dataY)
 
     def train(self):
         step = 0
